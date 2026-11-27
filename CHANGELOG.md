@@ -21,6 +21,17 @@ Publication correction: tag v4.0.6 has no published APK assets; its release
 workflow failed the identity gate because the tag preceded the version bump.
 The paging change it names (#284) first ships in the published 4.0.7 APKs.
 
+## [Unreleased]
+
+### Fixed
+
+- `::preview{file=…}` HTML widgets show as their reply renders, in Classic
+  and NextGen, as the Desktop shows them. The card used to wait for a Load
+  widget tap and never read the file before it, so the widget looked missing.
+  A failed read now says the file could not be loaded and offers Load widget
+  as a retry, instead of calling it not an HTML widget. Widget tables read one
+  row per line with their cells split by ` | `, instead of running together.
+
 ## [4.0.19] - 2026-11-27
 
 Stable release `4.0.19+3075`, with release APK codes `30751`, `30752` and

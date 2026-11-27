@@ -391,6 +391,9 @@ const _droppedTags = {
   'style',
 };
 
+const _tableCells = {'td', 'th'};
+const _tableParts = {'table', 'thead', 'tbody', 'tfoot', 'tr'};
+
 /// Reads agent HTML as a document. No script, handler or external frame runs.
 SandboxDocument? parseSandboxedHtml(String source) {
   if (!RegExp(r'<[a-z]', caseSensitive: false).hasMatch(source)) return null;
@@ -423,18 +426,28 @@ SandboxDocument? parseSandboxedHtml(String source) {
         controls.add(SandboxControl(send.trim(), node.text.trim()));
         return;
       }
+      // A table reads one row per line, its cells split by ` | `.
+      if (_tableCells.contains(name) && node.previousElementSibling != null) {
+        text.write(' | ');
+      }
       for (final child in node.nodes) {
         walk(child);
       }
       if (name == 'p' ||
           name == 'div' ||
           name == 'br' ||
+          name == 'tr' ||
           name.startsWith('h')) {
         text.write('\n');
       }
       return;
     }
     if (node is dom.Text) {
+      // Source indentation between rows and cells is not cell text.
+      if (_tableParts.contains(node.parent?.localName) &&
+          node.text.trim().isEmpty) {
+        return;
+      }
       text.write(node.text);
     }
   }

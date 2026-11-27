@@ -391,7 +391,6 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Load widget'));
       await tester.pump();
       await tester.pump();
       await tester.tap(find.text('Go'));
@@ -421,7 +420,6 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Load widget'));
       await tester.pump();
       await tester.pump();
       await tester.tap(find.text('Go'));
@@ -451,8 +449,6 @@ void main() {
         gateway.dispose();
       });
       await _pumpNg(tester, prefs, gateway, chat);
-      await tester.ensureVisible(find.text('Load widget'));
-      await tester.tap(find.text('Load widget'));
       await tester.pump();
       await tester.pump();
       final hold = gateway.hold = Completer<void>();
@@ -485,8 +481,6 @@ void main() {
         gateway.dispose();
       });
       await _pumpNg(tester, prefs, gateway, chat);
-      await tester.ensureVisible(find.text('Load widget'));
-      await tester.tap(find.text('Load widget'));
       await tester.pump();
       await tester.pump();
       gateway.debugEmit(

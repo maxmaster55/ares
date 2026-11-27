@@ -870,9 +870,16 @@ class SandboxPreviewCard extends StatefulWidget {
 class _SandboxPreviewCardState extends State<SandboxPreviewCard> {
   final _token = DateTime.now().microsecondsSinceEpoch.toString();
   SandboxDocument? _document;
-  var _loaded = false;
+
+  /// The read failed (connection, sign-in, missing file); a retry may work.
+  var _failed = false;
+
+  /// No reader, not an `.html` path, or the file holds no HTML.
   var _missing = false;
   var _truncated = false;
+
+  /// Bumped by every load, so a slow read never lands on a newer one.
+  var _generation = 0;
 
   /// [_sent], or the code an intent was refused with (`IntentRejected`:
   /// invalid, too_long, throttled, undelivered, no_gesture); worded while
@@ -892,25 +899,50 @@ class _SandboxPreviewCardState extends State<SandboxPreviewCard> {
         _ => l.render_widget_invalid,
       };
 
-  Future<void> _load() async {
+  // The file is read as soon as the card shows, as the Desktop reads it
+  // when the directive renders: a widget is the reply itself, not an
+  // attachment to fetch on request. The read is the gateway's bounded text
+  // preview of a file the agent named; nothing in it runs.
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(SandboxPreviewCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.file != widget.file) _load();
+  }
+
+  /// Starts a read. Sets state directly: callers run before a build or
+  /// inside setState.
+  void _load() {
+    final generation = ++_generation;
     final reader = widget.readHtml;
-    if (reader == null || !htmlFilePath(widget.file)) {
-      setState(() {
-        _loaded = true;
-        _missing = true;
-      });
-      return;
+    _document = null;
+    _truncated = false;
+    _failed = false;
+    _missing = reader == null || !htmlFilePath(widget.file);
+    if (reader != null && !_missing) {
+      unawaited(_read(reader, widget.file, generation));
     }
-    final source = await reader(widget.file);
-    if (!mounted) return;
+  }
+
+  Future<void> _read(
+    WidgetHtmlReader reader,
+    String file,
+    int generation,
+  ) async {
+    final source = await reader(file);
     final document = source == null
         ? null
         : await parseSandboxedPage(source.text);
-    if (!mounted) return;
+    if (!mounted || generation != _generation) return;
     setState(() {
-      _loaded = true;
       _document = document;
-      _missing = document == null;
+      _failed = source == null;
+      _missing = source != null && document == null;
       _truncated = source?.truncated ?? false;
     });
   }
@@ -969,9 +1001,14 @@ class _SandboxPreviewCardState extends State<SandboxPreviewCard> {
           children: [
             Text(l.render_widget_file(widget.file)),
             Text(l.render_widget_runs_as_text),
-            if (!_loaded)
-              TextButton(onPressed: _load, child: Text(l.render_load_widget))
-            else if (_missing)
+            // While the read runs, only the file line shows.
+            if (_failed) ...[
+              Text(l.attachment_download_failed),
+              TextButton(
+                onPressed: () => setState(_load),
+                child: Text(l.render_load_widget),
+              ),
+            ] else if (_missing)
               Text(l.render_not_html_widget)
             else if (document != null) ...[
               if (_truncated)
