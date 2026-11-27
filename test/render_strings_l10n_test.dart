@@ -189,10 +189,15 @@ void main() {
                   file: 'notes.txt',
                   readHtml: (_) async => null,
                 ),
+                SandboxPreviewCard(
+                  file: 'gone.html',
+                  readHtml: (_) async => null,
+                ),
               ],
             ),
           ),
         );
+        await tester.pump();
         await tester.pump();
         expect(find.text('Widget-Datei w.html'), findsOneWidget);
         expect(
@@ -200,15 +205,17 @@ void main() {
             'Läuft als Text in diesem Chat. Skripte und externe Frames '
             'werden entfernt.',
           ),
-          findsNWidgets(2),
+          findsNWidgets(3),
         );
-        await tester.tap(find.text('Widget laden').first);
-        await tester.pump();
-        await tester.pump();
-        await tester.tap(find.text('Widget laden'));
-        await tester.pump();
-        await tester.pump();
         expect(find.text('Diese Datei ist kein HTML-Widget.'), findsOneWidget);
+        expect(
+          find.text(
+            'Diese Datei konnte nicht geladen werden. Verbindung prüfen und '
+            'erneut versuchen.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Widget laden'), findsOneWidget);
         await tester.tap(find.text('Go'));
         await tester.pump();
         expect(sent, ['run']);

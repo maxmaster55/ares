@@ -1,5 +1,6 @@
 // Long HTML pages are parsed off the UI thread and cached by content, and a
-// widget file the gateway cut short says so, in Classic and NextGen.
+// `::preview` widget file loads as its reply renders and says when the
+// gateway cut it short, in Classic and NextGen.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -60,17 +61,21 @@ class _Files extends RemoteFilesClient {
 
   final String html;
   final bool truncated;
+  final reads = <String>[];
 
   @override
-  Future<RemoteTextPreview> readText(String path) async => RemoteTextPreview(
-    path: path,
-    text: html,
-    language: 'html',
-    mimeType: 'text/html',
-    byteSize: html.length,
-    binary: false,
-    truncated: truncated,
-  );
+  Future<RemoteTextPreview> readText(String path) async {
+    reads.add(path);
+    return RemoteTextPreview(
+      path: path,
+      text: html,
+      language: 'html',
+      mimeType: 'text/html',
+      byteSize: html.length,
+      binary: false,
+      truncated: truncated,
+    );
+  }
 }
 
 class _Gateway extends NextGenGateway {
@@ -322,7 +327,6 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Load widget'));
     await tester.pump();
     await _settleParse(tester, page);
     await tester.pump();
@@ -348,8 +352,6 @@ void main() {
     ]);
     addTearDown(chat.dispose);
     await _pumpNg(tester, gateway, chat);
-    await tester.ensureVisible(find.text('Load widget'));
-    await tester.tap(find.text('Load widget'));
     await tester.pump();
     await tester.pump();
     expect(find.text('Widget body'), findsOneWidget);
@@ -369,8 +371,6 @@ void main() {
       ], _Files(widgetHtml, truncated: true)),
     );
     await pumpChatUpdates(tester);
-    await tester.ensureVisible(find.text('Load widget'));
-    await tester.tap(find.text('Load widget'));
     await pumpChatUpdates(tester);
     expect(find.text('Widget body'), findsOneWidget);
     expect(find.text(_truncatedNotice), findsOneWidget);
@@ -386,11 +386,112 @@ void main() {
       ], _Files(widgetHtml)),
     );
     await pumpChatUpdates(tester);
-    await tester.ensureVisible(find.text('Load widget'));
-    await tester.tap(find.text('Load widget'));
     await pumpChatUpdates(tester);
     expect(find.text('Widget body'), findsOneWidget);
     expect(find.text(_truncatedNotice), findsNothing);
+  });
+
+  // The reply and panel a gateway sent: an absolute host path, a styled
+  // page with a drawing, a table and two send buttons.
+  const panelReply =
+      'Here is a test panel:\n\n'
+      '::preview{file="/opt/data/cache/scratch/test-panel.html"}\n\n'
+      'Check these in Ares.';
+  const panelHtml = '''<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  th{color:var(--muted-foreground)}
+</style></head><body>
+<h3>Backup status (test panel)</h3>
+<svg width="320" height="20" viewBox="0 0 320 20">
+  <rect x="0" y="4" width="48" height="12" rx="6" fill="#e07a3f"/>
+</svg>
+<table>
+  <tr><th>Source</th><th>Backed up</th><th>Status</th></tr>
+  <tr><td>max-l5 / Projects</td><td>3.3 GB</td><td>Done</td></tr>
+</table>
+<button data-hermes-send="refresh the test panel">Refresh</button>
+<button data-hermes-send="test panel: list the Gitea repos">Gitea repos</button>
+</body></html>''';
+
+  void expectPanel(_Files files) {
+    expect(files.reads, ['/opt/data/cache/scratch/test-panel.html']);
+    expect(find.textContaining('Backup status (test panel)'), findsOneWidget);
+    expect(
+      find.textContaining('max-l5 / Projects | 3.3 GB | Done'),
+      findsOneWidget,
+    );
+    expect(find.text('Refresh'), findsOneWidget);
+    expect(find.text('Gitea repos'), findsOneWidget);
+    expect(find.text('Check these in Ares.'), findsOneWidget);
+  }
+
+  testWidgets('NextGen shows a widget as its reply renders, with no tap', (
+    tester,
+  ) async {
+    final files = _Files(panelHtml);
+    final gateway = _Gateway(files);
+    addTearDown(gateway.dispose);
+    final chat = NgChatController(gateway, sessionId: 's')..runtimeId = 'rt-s';
+    chat.debugApplyHistory([
+      {'role': 'user', 'content': 'show me something as a test'},
+      {'role': 'assistant', 'content': panelReply},
+    ]);
+    addTearDown(chat.dispose);
+    await _pumpNg(tester, gateway, chat);
+    await tester.pump();
+    expectPanel(files);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Classic shows a widget as its reply renders, with no tap', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final files = _Files(panelHtml);
+    await tester.pumpWidget(
+      _classicChat('chat-panel', [
+        {'id': 1, 'role': 'user', 'content': 'show me something as a test'},
+        {'id': 2, 'role': 'assistant', 'content': panelReply},
+      ], files),
+    );
+    await pumpChatUpdates(tester);
+    expectPanel(files);
+  });
+
+  testWidgets('a widget whose file could not be read offers a retry', (
+    tester,
+  ) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: SandboxPreviewCard(
+            file: '/srv/panel.html',
+            // The chat readers answer null for any failed read.
+            readHtml: (_) async =>
+                ++attempts == 1 ? null : WidgetHtmlSource(widgetHtml),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(attempts, 1);
+    expect(
+      find.text(
+        'Could not load this file. Check the connection and try again.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('This file is not an HTML widget.'), findsNothing);
+    await tester.tap(find.text('Load widget'));
+    await tester.pump();
+    await tester.pump();
+    expect(attempts, 2);
+    expect(find.text('Widget body'), findsOneWidget);
+    expect(find.text('Load widget'), findsNothing);
   });
 
   testWidgets('Contributions names only the slot Ares draws', (tester) async {

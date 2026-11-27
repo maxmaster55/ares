@@ -246,6 +246,14 @@ void main() {
       )?.droppedActiveContent,
       isTrue,
     );
+    // One row per line, cells split, the source's indentation dropped.
+    expect(
+      parseSandboxedHtml(
+        '<table>\n  <tr><th>Source</th><th>Status</th></tr>\n'
+        '  <tr><td>Projects</td><td>Done</td></tr>\n</table>',
+      )?.text,
+      'Source | Status\nProjects | Done',
+    );
   });
 
   test('an unreviewed package cannot receive a slot', () {
@@ -287,8 +295,6 @@ void main() {
     expect(_tappableLink(tester, 'youtube.com/watch?v=abc123'), isTrue);
     expect(find.text('alert(1)'), findsNothing);
 
-    await tester.ensureVisible(find.text('Load widget'));
-    await tester.tap(find.text('Load widget'));
     await tester.pump();
     expect(find.text('Safe copy'), findsOneWidget);
     expect(find.text('alert(1)'), findsNothing);
